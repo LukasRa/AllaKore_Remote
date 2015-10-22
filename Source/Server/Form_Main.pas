@@ -20,7 +20,7 @@ interface
 uses
   Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
   Dialogs, ComCtrls, StdCtrls, ExtCtrls, AppEvnts, IdBaseComponent, IdComponent,
-  IdTCPServer, IdMappedPortTCP, XPMan;
+  IdTCPServer, IdMappedPortTCP, XPMan, Shellapi,  Menus;
 
 
 // Thread to Define type connection, if Main, Desktop Remote, Download or Upload Files.
@@ -93,11 +93,14 @@ type
     ApplicationEvents1: TApplicationEvents;
     Main_IdTCPServer: TIdTCPServer;
     Ping_Timer: TTimer;
+    PopupMenu1: TPopupMenu;
+    Config1: TMenuItem;
     procedure ApplicationEvents1Exception(Sender: TObject; E: Exception);
     procedure FormCreate(Sender: TObject);
     procedure Main_IdTCPServerExecute(AThread: TIdPeerThread);
     procedure Main_IdTCPServerConnect(AThread: TIdPeerThread);
     procedure Ping_TimerTimer(Sender: TObject);
+    procedure Connections_ListViewDblClick(Sender: TObject);
   private
     { Private declarations }
   public
@@ -107,10 +110,10 @@ type
 var
   frm_Main: Tfrm_Main;
 
-const
-  Port = 3898; // Port for Indy Socket;
 
 implementation
+
+uses uUteisServer;
 
 {$R *.dfm}
 
@@ -287,8 +290,9 @@ end;
 
 procedure Tfrm_Main.FormCreate(Sender: TObject);
 begin
+  port := GetPort;
   Main_IdTCPServer.DefaultPort := Port;
-  Main_IdTCPServer.Active := true;
+  Main_IdTCPServer.Active      := true;
 
   Caption := Caption + ' - ' + GetAppVersionStr;
 end;
@@ -322,6 +326,21 @@ begin
       // Create the Thread for Main Socket
         ThreadMain := TThreadConnection_Main.Create(AThread_Define);
         ThreadMain.Resume;
+
+        if (Pos('<|GROUP|>', s) > 0) then
+        begin
+         // Get the Group
+         s2 := s;
+         Delete(s2, 1, Pos('<|MAINSOCKET|>', s) + 22);
+         Group := s2;
+         Group := Copy(s2, 1, Pos('<<|', s2) - 1);
+
+         // Get the PC Name
+         s2 := s;
+         Delete(s2, 1, Pos('<|MACHINE|>', s)+ 10);
+         Machine := s2;
+         Machine := Copy(s2, 1, Pos('<<|', s2) - 1);
+        end;
 
         break; // Break the while
       end;
@@ -389,6 +408,8 @@ begin
   L.SubItems.Add(Password);
   L.SubItems.Add('');
   L.SubItems.Add('Calculating...');
+  L.SubItems.Add(Group);   //Marcones Freitas - 16/10/2015 -> Add the Group .ini
+  L.SubItems.Add(Machine); //Marcones Freitas - 16/10/2015 -> Add the Machine .ini
   L.SubItems.Objects[4] := TObject(0);
 end;
 
@@ -667,6 +688,19 @@ begin
     end;
   end;
 
+end;
+
+procedure Tfrm_Main.Connections_ListViewDblClick(Sender: TObject);
+var vID,vSenha,vPath: string;
+begin
+  // Marcones Freitas - 17/10/2015 - Com o Duplo Clique, Abre o AllaKore Remote Cliente com os Parametros Group e Machine
+  if Connections_ListView.Selected <> nil then
+     begin
+      vID    := Connections_ListView.Items[Connections_ListView.Selected.Index].SubItems[1];
+      vSenha := Connections_ListView.Items[Connections_ListView.Selected.Index].SubItems[2];
+      vPath  := ExtractFilePath(Application.ExeName)+'AllaKore_Remote_Client.exe';
+      ShellExecute(handle,'open',PChar(vPath), PChar(vID+' '+vSenha),'',SW_SHOWNORMAL);
+     end;
 end;
 
 end.

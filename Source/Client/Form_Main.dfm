@@ -13,6 +13,7 @@ object frm_Main: Tfrm_Main
   Font.Name = 'Tahoma'
   Font.Style = []
   OldCreateOrder = False
+  PopupMenu = pm1
   Position = poDesktopCenter
   OnClose = FormClose
   OnCreate = FormCreate
@@ -12939,6 +12940,34 @@ object frm_Main: Tfrm_Main
   object Clipboard_Timer: TTimer
     OnTimer = Clipboard_TimerTimer
     Left = 240
+    Top = 224
+  end
+  object pm1: TPopupMenu
+    Left = 304
+    Top = 224
+    object mniConfig: TMenuItem
+      Caption = 'Config'
+      OnClick = mniConfigClick
+    end
+    object mniShow: TMenuItem
+      Caption = 'Show'
+      OnClick = mniShowClick
+    end
+    object mniMinimiser: TMenuItem
+      Caption = 'Minimizer'
+      OnClick = mniMinimiserClick
+    end
+    object mniClose: TMenuItem
+      Caption = 'Close'
+      OnClick = mniCloseClick
+    end
+  end
+  object TicServer: TTrayIcon
+    BalloonFlags = bfInfo
+    PopupMenu = pm1
+    Visible = True
+    OnDblClick = TicServerDblClick
+    Left = 32
     Top = 224
   end
 end

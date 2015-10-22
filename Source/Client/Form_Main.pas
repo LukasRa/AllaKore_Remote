@@ -1,4 +1,4 @@
-{
+﻿{
 
 
       This source has created by Maickonn Richard.
@@ -79,6 +79,12 @@ type
     About_BitBtn: TBitBtn;
     TargetID_MaskEdit: TMaskEdit;
     Clipboard_Timer: TTimer;
+    pm1: TPopupMenu;
+    mniConfig: TMenuItem;
+    mniShow: TMenuItem;
+    mniMinimiser: TMenuItem;
+    mniClose: TMenuItem;
+    TicServer: TTrayIcon;
     procedure Connect_BitBtnClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure Reconnect_TimerTimer(Sender: TObject);
@@ -99,8 +105,17 @@ type
     procedure About_BitBtnClick(Sender: TObject);
     procedure TargetID_MaskEditKeyPress(Sender: TObject; var Key: Char);
     procedure Clipboard_TimerTimer(Sender: TObject);
+    procedure mniConfigClick(Sender: TObject);
+    procedure mniShowClick(Sender: TObject);
+    procedure mniMinimiserClick(Sender: TObject);
+    procedure mniCloseClick(Sender: TObject);
+    procedure TicServerDblClick(Sender: TObject);
   private
     { Private declarations }
+    FirstExecute    : Boolean;
+    procedure HideApplication;
+    procedure ShowApplication;
+    procedure CloseAplication;
   public
     MyID: string;
     MyPassword: string;
@@ -122,17 +137,14 @@ var
   Accessed, LostConnection: Boolean;
   OldClipboardText: string;
 
-const
-  Host = 'localhost';     // Host of Sockets  (Insert the IP Address or DNS of your Server)
-  Port = 3898;            // Port of Sockets
-  ConnectionTimeout = 60; // Timeout of connection (in secound)
 
 implementation
 
 {$R *.dfm}
 
 uses
-  Form_Password, Form_RemoteScreen, Form_Chat, Form_ShareFiles;
+  Form_Password, Form_RemoteScreen, Form_Chat, Form_ShareFiles, Form_Config,
+  uUteis;
 
 constructor TThread_Connection_Main.Create(aSocket: TCustomWinSocket);
 begin
@@ -373,6 +385,13 @@ begin
 
 end;
 
+procedure Tfrm_Main.CloseAplication;
+begin
+ Application.ProcessMessages;
+ if Application.MessageBox(PChar('Confirm close the Application?'), PChar(Caption), mb_YesNo + mb_DefButton2 + mb_IconQuestion) = IdYes then
+    Halt;
+end;
+
 procedure Tfrm_Main.CloseSockets;
 begin
 
@@ -397,6 +416,7 @@ begin
 
   ClearConnection;
 end;
+
 
 procedure Tfrm_Main.SetOffline;
 begin
@@ -448,6 +468,18 @@ begin
 
   Connect_BitBtn.Enabled := true;
 
+  //Marcones Freitas - 17/10/2015 -> Ao Conectar se as Variaveis estiverem preenchidas Abre a tela de Senha
+  if (vParID <> '') and (vParSenha <> '' )then
+     begin
+      TargetID_MaskEdit.Text := vParID;
+      frm_Main.Main_Socket.Socket.SendText('<|CHECKIDPASSWORD|>' + TargetID_MaskEdit.Text + '<|>' + vParSenha + '<<|');
+     end;
+end;
+
+procedure Tfrm_Main.ShowApplication;
+begin
+  frm_Main.Show;
+  frm_Main.WindowState := wsNormal;
 end;
 
 // Compress Stream with zLib
@@ -576,41 +608,58 @@ begin
 end;
 
 procedure Tfrm_Main.FormCreate(Sender: TObject);
-var
-  _Host: Ansistring;
-  _Port: Integer;
 begin
+  try
+   if ActiveProcess(Application.Title) then
+      raise Exception.Create('There is already a process running');
+
+   FirstExecute := True;
+  except on E: Exception do
+    Begin
+      ShowMessage(E.Message);
+      Application.Terminate;
+    End;
+  end;
+
+  FirstExecute := True;
   // Insert version on Caption of the Form
   Caption := Caption + ' - ' + GetAppVersionStr;
 
-  //Reads two exe params - host and port. If not supplied uses constants. to use: client.exe HOST PORT, for ex. client.exe 192.168.16.201 3398
-  if ParamStr(1)<>'' then
-    _Host := ParamStr(1)
-  else
-    _Host := Host;
+  //Marcones Freitas - 17/10/2015 -> Se o Client foi Aberto pelo Servidor, Alimenta as Variaveis
+  if (ParamCount > 0) then
+      begin
+       vParID    := ParamStr(1);
+       vParSenha := ParamStr(2);
+      end;
 
-  _Port := StrToIntDef(ParamStr(2), Port);
+  //Marcones Freitas - 16/10/2015 -> Se for a primeira Execução do Client, abre a Tela de Configurações para setar os parametros do arquivo ini
+  if (GetIni(ExtractFilePath(Application.ExeName) + Application.Title+'.ini', cGeneral, cHost, True) = '') or
+     (GetIni(ExtractFilePath(Application.ExeName) + Application.Title+'.ini', cGeneral, cHost, True) = '0') then
+     begin
+       Reconnect_Timer.Enabled := False;
+       frm_Config              := Tfrm_Config.Create(self);
+       frm_Config.ShowModal;
+       FreeAndNil(frm_Config);
+     end;
 
-
-
-  // Define Host, Port and Timeout of Sockets
-  Main_Socket.Host := Host;
-  Main_Socket.Port := Port;
-
-  Desktop_Socket.Host := Host;
-  Desktop_Socket.Port := Port;
-
-  Keyboard_Socket.Host := Host;
-  Keyboard_Socket.Port := Port;
-
-  Files_Socket.Host := Host;
-  Files_Socket.Port := Port;
-  //
-  ResolutionTargetWidth := 986;
-  ResolutionTargetHeight := 600;
-
+  //Marcones Freitas - 16/10/2015 -> Get the Parameters file ini
+  Host              := GetIni(ExtractFilePath(Application.ExeName) + Application.Title+'.ini', cGeneral, cHost, True);
+  Port              := StrToInt(GetIni(ExtractFilePath(Application.ExeName) + Application.Title+'.ini', cGeneral, cPort, True));
+  vGroup            := GetIni(ExtractFilePath(Application.ExeName) + Application.Title+'.ini', cGeneral, cGroup, True);
+  vMachine          := GetIni(ExtractFilePath(Application.ExeName) + Application.Title+'.ini', cGeneral, cMachine, True);
+  ConnectionTimeout := StrToInt(GetIni(ExtractFilePath(Application.ExeName) + Application.Title+'.ini', cGeneral, cConnectTimeOut, True));
+  SetLanguage;
+  Reconnect_Timer.Enabled := True;
+  SetHostPortGroupMach;
+  ResolutionTargetWidth   := 986;
+  ResolutionTargetHeight  := 600;
   SetOffline;
   Reconnect;
+end;
+
+procedure Tfrm_Main.HideApplication;
+begin
+  frm_Main.Hide;
 end;
 
 procedure Tfrm_Main.Keyboard_SocketConnect(Sender: TObject; Socket: TCustomWinSocket);
@@ -629,6 +678,42 @@ var
 begin
   s := Socket.ReceiveText;
 
+  // Combo Keys
+  if (Pos('<|ALTDOWN|>', s) > 0) then
+  begin
+    s := StringReplace(s, '<|ALTDOWN|>', '', [rfReplaceAll]);
+    keybd_event(18, 0, 0, 0);
+  end;
+
+  if (Pos('<|ALTUP|>', s) > 0) then
+  begin
+    s := StringReplace(s, '<|ALTUP|>', '', [rfReplaceAll]);
+    keybd_event(18, 0, KEYEVENTF_KEYUP, 0);
+  end;
+
+  if (Pos('<|CTRLDOWN|>', s) > 0) then
+  begin
+    s := StringReplace(s, '<|CTRLDOWN|>', '', [rfReplaceAll]);
+    keybd_event(17, 0, 0, 0);
+  end;
+
+  if (Pos('<|CTRLUP|>', s) > 0) then
+  begin
+    s := StringReplace(s, '<|CTRLUP|>', '', [rfReplaceAll]);
+    keybd_event(17, 0, KEYEVENTF_KEYUP, 0);
+  end;
+
+  if (Pos('<|SHIFTDOWN|>', s) > 0) then
+  begin
+    s := StringReplace(s, '<|SHIFTDOWN|>', '', [rfReplaceAll]);
+    keybd_event(16, 0, 0, 0);
+  end;
+
+  if (Pos('<|SHIFTUP|>', s) > 0) then
+  begin
+    s := StringReplace(s, '<|SHIFTUP|>', '', [rfReplaceAll]);
+    keybd_event(16, 0, KEYEVENTF_KEYUP, 0);
+  end;
   if (Pos('?', s) > 0) then
   begin
     if (GetKeyState(VK_SHIFT) < 0) then
@@ -665,7 +750,7 @@ begin
 
   Timeout_Timer.Enabled := true;
 
-  Socket.SendText('<|MAINSOCKET|>');
+  Socket.SendText('<|MAINSOCKET|>'+'<|GROUP|>' + vGroup + '<<|'+'<|MACHINE|>' + vMachine + '<<|');
 
   Thread_Connection_Main := TThread_Connection_Main.Create(Socket);
   Thread_Connection_Main.Resume;
@@ -699,6 +784,30 @@ begin
   CloseSockets;
 end;
 
+procedure Tfrm_Main.mniCloseClick(Sender: TObject);
+begin
+  CloseAplication;
+end;
+
+procedure Tfrm_Main.mniConfigClick(Sender: TObject);
+begin
+ Reconnect_Timer.Enabled := False;
+ frm_Config              := Tfrm_Config.Create(self);
+ frm_Config.ShowModal;
+ FreeAndNil(frm_Config);
+ Reconnect_Timer.Enabled := True;
+end;
+
+procedure Tfrm_Main.mniMinimiserClick(Sender: TObject);
+begin
+ HideApplication;
+end;
+
+procedure Tfrm_Main.mniShowClick(Sender: TObject);
+begin
+  ShowApplication;
+end;
+
 procedure Tfrm_Main.TargetID_MaskEditKeyPress(Sender: TObject; var Key: Char);
 begin
   if Key = #13 then
@@ -721,6 +830,11 @@ begin
     Connect_BitBtn.Click;
     Key := #0;
   end
+end;
+
+procedure Tfrm_Main.TicServerDblClick(Sender: TObject);
+begin
+ ShowApplication;
 end;
 
 procedure Tfrm_Main.Timeout_TimerTimer(Sender: TObject);
@@ -748,7 +862,7 @@ var
   i: Integer;
   FoldersAndFiles: TStringList;
   L: TListItem;
-  FileToUpload: TMemoryStream;
+  FileToUpload: TFileStream;
   Extension: string;
 begin
   inherited;
@@ -930,7 +1044,7 @@ begin
 
   { Redirected commands }
 
-  // Desktop Remote (Mouse and Keyboard)
+  // Desktop Remote 
         if (Pos('<|RESOLUTION|>', s) > 0) then
         begin
           s2 := s;
@@ -1066,30 +1180,6 @@ begin
           end;
         end;
 
-
-  // Combo Keys
-        if (Pos('<|ALTDOWN|>', s) > 0) then
-          keybd_event(18, 0, 0, 0);
-
-        if (Pos('<|ALTUP|>', s) > 0) then
-          keybd_event(18, 0, KEYEVENTF_KEYUP, 0);
-
-        if (Pos('<|CTRLDOWN|>', s) > 0) then
-          keybd_event(17, 0, 0, 0);
-
-        if (Pos('<|CTRLUP|>', s) > 0) then
-          keybd_event(17, 0, KEYEVENTF_KEYUP, 0);
-
-        if (Pos('<|SHIFTDOWN|>', s) > 0) then
-          keybd_event(16, 0, 0, 0);
-
-        if (Pos('<|SHIFTUP|>', s) > 0) then
-          keybd_event(16, 0, KEYEVENTF_KEYUP, 0);
-
-
-
-
-
   // Chat
         if (Pos('<|CHAT|>', s) > 0) then
         begin
@@ -1122,15 +1212,16 @@ begin
 
                   Chat_RichEdit.SelStart := Chat_RichEdit.GetTextLen;
                   Chat_RichEdit.SelAttributes.Color := clWhite;
-                  Chat_RichEdit.SelText := '   �   ' + s2;
+                  Chat_RichEdit.SelText := '   •   ' + s2;
                 end
                 else
                 begin
                   Chat_RichEdit.SelStart := Chat_RichEdit.GetTextLen;
                   Chat_RichEdit.SelAttributes.Style := [];
                   Chat_RichEdit.SelAttributes.Color := clWhite;
-                  Chat_RichEdit.SelText := #13 + '   �   ' + s2;
+                  Chat_RichEdit.SelText := #13 + '   •   ' + s2;
                 end;
+
 
                 SendMessage(Chat_RichEdit.Handle, WM_VSCROLL, SB_BOTTOM, 0);
 
@@ -1206,6 +1297,7 @@ begin
                   L.ImageIndex := 1;
                 end;
               end);
+            Sleep(5); // Effect
           end;
           FreeAndNil(FoldersAndFiles);
 
@@ -1247,13 +1339,14 @@ begin
                 else
                   L.ImageIndex := 2;
               end);
+            Sleep(5); // Effect
           end;
           FreeAndNil(FoldersAndFiles);
 
           Synchronize(
             procedure
             begin
-              frm_ShareFiles.ShareFiles_ListView.Enabled := true;
+//              frm_ShareFiles.ShareFiles_ListView.Enabled := true;
               frm_ShareFiles.Directory_Edit.Enabled := true;
             end);
 
@@ -1305,10 +1398,11 @@ begin
 
           s2 := Copy(s2, 1, Pos('<<|', s2) - 1);
 
-          FileToUpload := TMemoryStream.Create;
-          FileToUpload.LoadFromFile(s2);
+          FileToUpload := TFileStream.Create(s2, fmOpenRead);
 
-          frm_Main.Files_Socket.Socket.SendText('<|SIZE|>' + intToStr(FileToUpload.Size) + '<<|' + MemoryStreamToString(FileToUpload));
+
+          frm_Main.Files_Socket.Socket.SendText('<|SIZE|>' + intToStr(FileToUpload.Size) + '<<|');
+          frm_Main.Files_Socket.Socket.SendStream(FileToUpload);
         end;
 
       end;
@@ -1317,11 +1411,6 @@ begin
     Sleep(5); // Avoids using 100% CPU
   end;
 end;
-
-
-
-
-
 
 // Connection of Desktop screens
 procedure TThread_Connection_Desktop.Execute;
@@ -1351,22 +1440,8 @@ begin
 
         if (Pos('<|GETFULLSCREENSHOT|>', s) > 0) then
         begin
-
-          if (Pos('<|NEWRESOLUTION|>', s) > 0) then
-          begin
-            s2 := s;
-            Delete(s2, 1, Pos('<|NEWRESOLUTION|>', s2) + 16);
-
-            ResolutionWidth := StrToInt(Copy(s2, 1, Pos('<|>', s2) - 1));
-            Delete(s2, 1, Pos('<|>', s2) + 2);
-
-            ResolutionHeight := StrToInt(Copy(s2, 1, Pos('<<|', s2) - 1));
-          end
-          else
-          begin
-            ResolutionWidth := Screen.Width;
-            ResolutionHeight := Screen.Height;
-          end;
+          ResolutionWidth := Screen.Width;
+          ResolutionHeight := Screen.Height;
 
           frm_Main.Main_Socket.Socket.SendText('<|REDIRECT|><|RESOLUTION|>' + IntToStr(Screen.Width) + '<|>' + IntToStr(Screen.Height) + '<<|');
 
@@ -1499,6 +1574,12 @@ begin
     end;
     Sleep(5); // Avoids using 100% CPU
   end;
+  FreeAndNil(MyFirstBmp);
+  FreeAndNil(UnPackStream);
+  FreeAndNil(MyTempStream);
+  FreeAndNil(MySecondBmp);
+  FreeAndNil(MyCompareBmp);
+  FreeAndNil(PackStream);
 end;
 
 
